@@ -41,7 +41,8 @@ This project simulates phase plates and their capabilities in shaping transverse
 **Example 1 : Creating a Truncated Gaussian Beam Phase & Simulating its Propagation**
 
 ```python
-from FresnelGSA import Gaussian, Propagate, Lens, phasePlate 
+from FresnelGSA import Gaussian, Propagate, Lens, phasePlate
+from Targets import superTruncGaussian
 
 # --- Initialize the simulation with parameters ---
 wavelength = 253 * 1e-9 # Setting the wavelength of the beam
