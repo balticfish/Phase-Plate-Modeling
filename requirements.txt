@@ -1,0 +1,9 @@
+numpy
+scipy
+matplotlib
+tqdm
+h5py
+cmocean
+cv2
+seaborn
+PIL
