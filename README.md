@@ -8,7 +8,6 @@ This project simulates phase plates and their capabilities in shaping transverse
 - [Installation](#installation)
 - [Usage](#usage)
 - [Project Structure](#project-structure)
-- [License](#license)
 
 ## Features
 
@@ -122,7 +121,4 @@ prop = Propagate(lens, f, plot = True, padding = 0, gaussianProp = False, save =
 - `README.md`: Project overview and instructions.
 
 
-
-
-## License
 
