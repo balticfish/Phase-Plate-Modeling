@@ -49,8 +49,8 @@ w0 = 8 * 1e-3 # Setting the intial beam width
 f = 1.2 # Setting the focal length of the lens
 extent = [-1.27 * 1e-2, 1.27 * 1e-2] # Setting the plots extent
 z0 = pi/wavelength * w0**2 # Determine the complex beam parameter
-savefile = 'IFTAPhases/TestRun.h5' # Save file for the Simulated Data
-hologramSave = 'IFTAPhases/TestRun.h5' # Save file for the phase mask
+savefile = 'IFTAPhases/SimulatedData.h5' # Save file for the Simulated Data
+hologramSave = 'IFTAPhases/Phase.h5' # Save file for the phase mask
 randomSeed = 15
 np.random.seed(randomSeed) #Setting the random seed for the IFTA
 
@@ -65,13 +65,13 @@ target = superTruncGaussian(inputBeam, w0 = targetWaist, trunc = 50)
 
 # --- Building a phase plate to achieve the given target ---
 plate = phasePlate(inputBeam, plot = True, hologram = [30, target],
-                 save = 'Phase8.h5', f = f, randomSeed = 15)# [30,target]
+                 save = hologramSave, f = f, randomSeed = randomSeed)
 
 # --- Applying a lens transformation to the beam ---
 lens = Lens(plate, f)
 
 # --- Propagating the beam to the fourier plane --- 
-prop = Propagate(lens, f, plot = True, padding = 0, gaussianProp = False, save = 'SimulatedData8.h5')
+prop = Propagate(lens, f, plot = True, padding = 0, gaussianProp = False, save = savefile)
 ```
 
 **Example 2 : Simulating the Transport through a saved Phase Mask**
@@ -85,13 +85,28 @@ w0 = 8 * 1e-3 # Setting the intial beam width
 f = 1.2 # Setting the focal length of the lens
 extent = [-1.27 * 1e-2, 1.27 * 1e-2] # Setting the plots extent
 z0 = pi/wavelength * w0**2 # Determine the complex beam parameter
-savefile = 'IFTAPhases/TestRun.h5' # Save file for the Simulated Data
-hologramSave = 'IFTAPhases/TestRun.h5' # Save file for the phase mask
+savefile = 'IFTAPhases/SimulatedData.h5' # Save file for the Simulated Data
 randomSeed = 15
 np.random.seed(randomSeed) #Setting the random seed for the IFTA
+
+# --- Importing a Phase Plate and Propagating through it ---
+
+# --- Creating an initial beam to propagate --- 
+inputBeam = Gaussian(sizeFactor=11, plot = True, w0 = w0)
+
+# --- Importing a Phase Plate and Applying the Phase Mask ---
+hologram = 'IFTAPhases/Phase.h5'
+plate = phasePlate(inputBeam, plot = True, hologram = hologram,
+                 save = '', f = f, randomSeed = randomSeed)
+
+# --- Applying a lens transformation to the beam ---
+lens = Lens(plate, f)
+
+# --- Propagating the beam to the fourier plane --- 
+prop = Propagate(lens, f, plot = True, padding = 0, gaussianProp = False, save = savefile)
+
 ```
 
-**Example 3 : Testing the accuracy of the Fresnel Propagator through Gaussian Optics**
 
 ## Project Structure
 
