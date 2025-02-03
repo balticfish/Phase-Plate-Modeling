@@ -41,20 +41,55 @@ This project simulates phase plates and their capabilities in shaping transverse
 **Example 1 : Creating a Truncated Gaussian Beam Phase & Simulating its Propagation**
 
 ```python
-from FresnelGSA import FresnelGSA
-from PlottingTools import plot_phase_plate
+from FresnelGSA import Gaussian, Propagate, Lens, phasePlate
 
-# Initialize the simulation with parameters
-simulation = FresnelGSA(parameters)
+# --- Initialize the simulation with parameters ---
+wavelength = 253 * 1e-9 # Setting the wavelength of the beam
+w0 = 8 * 1e-3 # Setting the intial beam width
+f = 1.2 # Setting the focal length of the lens
+extent = [-1.27 * 1e-2, 1.27 * 1e-2] # Setting the plots extent
+z0 = pi/wavelength * w0**2 # Determine the complex beam parameter
+savefile = 'IFTAPhases/TestRun.h5' # Save file for the Simulated Data
+hologramSave = 'IFTAPhases/TestRun.h5' # Save file for the phase mask
+randomSeed = 15
+np.random.seed(randomSeed) #Setting the random seed for the IFTA
 
-# Run the simulation
-result = simulation.run()
+# --- Creating a Phase Plate and Propagating through it --- 
 
-# Visualize the phase plate
-plot_phase_plate(result)
+# --- Creating an initial beam to propagate --- 
+inputBeam = Gaussian(sizeFactor=11, plot = True, w0 = w0)
+
+# --- Initializing a target ---
+targetWaist = 10.20116e-4
+target = superTruncGaussian(inputBeam, w0 = targetWaist, trunc = 50)
+
+# --- Building a phase plate to achieve the given target ---
+plate = phasePlate(inputBeam, plot = True, hologram = [30, target],
+                 save = 'Phase8.h5', f = f, randomSeed = 15)# [30,target]
+
+# --- Applying a lens transformation to the beam ---
+lens = Lens(plate, f)
+
+# --- Propagating the beam to the fourier plane --- 
+prop = Propagate(lens, f, plot = True, padding = 0, gaussianProp = False, save = 'SimulatedData8.h5')
 ```
 
 **Example 2 : Simulating the Transport through a saved Phase Mask**
+```python
+from FresnelGSA import Gaussian, Propagate, Lens, phasePlate
+
+
+# --- Initialize the simulation with parameters ---
+wavelength = 253 * 1e-9 # Setting the wavelength of the beam
+w0 = 8 * 1e-3 # Setting the intial beam width
+f = 1.2 # Setting the focal length of the lens
+extent = [-1.27 * 1e-2, 1.27 * 1e-2] # Setting the plots extent
+z0 = pi/wavelength * w0**2 # Determine the complex beam parameter
+savefile = 'IFTAPhases/TestRun.h5' # Save file for the Simulated Data
+hologramSave = 'IFTAPhases/TestRun.h5' # Save file for the phase mask
+randomSeed = 15
+np.random.seed(randomSeed) #Setting the random seed for the IFTA
+```
 
 **Example 3 : Testing the accuracy of the Fresnel Propagator through Gaussian Optics**
 
