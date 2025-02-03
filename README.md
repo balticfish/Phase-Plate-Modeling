@@ -62,10 +62,12 @@ plot_phase_plate(result)
 
 - `FresnelGSA.py`: The Main file for Phase Plate Transport Simulation
 - `IFTA.py`: Contains the Optical Iterative Fourier Transform Algorithm for phase retrieval.
+- `ToolsIFTA.py`: Utility Functions for the Optical IFTA
 - `PhysicalPlate.py`: Adapts the Phase Plate model for Manufacturing Standards
 - `PlottingTools.py`: Utility functions for plotting and visualizing results.
 - `padding.py` : Utility functions to add padding for more accurate Fourier Transforms
 - `Targets/`: Directory containing target patterns
+- `PlottingTools.py`: Contains the Stanford Colormap for Plotting
 - `README.md`: Project overview and instructions.
 
 
