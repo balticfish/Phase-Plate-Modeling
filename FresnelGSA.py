@@ -523,7 +523,7 @@ if __name__ == "__main__":
 
     # --- Building a phase plate to achieve the given target ---
     plate = phasePlate(inputBeam, plot = True, hologram = [30, target],
-                       save = 'Phase8.h5', f = f, randomSeed = 15)# [30,target]
+                       save = 'Phase8.h5', f = f, randomSeed = randomSeed)# [30,target]
     
     # --- Applying a lens transformation to the beam ---
     lens = Lens(plate, f)
