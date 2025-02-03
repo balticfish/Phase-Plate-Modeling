@@ -13,7 +13,7 @@ This project simulates phase plates and their capabilities in shaping transverse
 ## Features
 
 - Simulation of phase plates for UV laser beam shaping.
-- Implementation of algorithms such as Iterative Fourier Transform Algorithm (IFTA) and Fresnel Gaussian Simulation.
+- Implementation of algorithms such as an Optical Iterative Fourier Transform Algorithm (IFTA).
 - Tools for visualizing and analyzing phase plate designs.
 
 ## Installation
