@@ -496,6 +496,38 @@ def phasePlate(inputBeam, hologram = [30, None], wavelength = 253e-9,f = 1.2,
 
 
 
+def MaskOptics(inputBeam, maskRadius, extent = [1.27e-2, 1.27e-2]):
+    """
+    Apply a crude Iris to the beam removing the field outside of the given aperture
+
+    Parameters
+    ----------
+    inputBeam : np.array
+        complex field array containing the beam
+    maskRadius : float
+        Radius of the aperture to be applied
+    extent : list, optional
+        Given extent of the array in m. The default is [1.27e-2, 1.27e-2].
+
+    Returns
+    -------
+    outputBeam : np.array
+        complex field array after the aperture is applied
+
+    """
+    # --- Extract Data --- 
+    inputShape = inputBeam.shape
+    outputBeam = np.array(inputBeam) # Create a copy of the beam
+    
+    # --- Creating a grid to set the aperture to --- 
+    x_, y_ = np.linspace(extent[0], extent[1], inputShape[0]), np.linspace(extent[0], extent[1], inputShape[1])
+    X, Y = np.meshgrid(x_, y_)
+    rSquare = (X**2 + Y**2)
+    
+    # --- Setting the field to 0 outside of the aperture --- 
+    outputBeam[(np.sqrt(rSquare) > maskRadius)] = 0
+    
+    return outputBeam
 
 
 
