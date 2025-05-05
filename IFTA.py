@@ -17,8 +17,7 @@ from matplotlib.colors import LogNorm
 import cv2
 from tqdm import tqdm
 from Targets import stanford, flatTop, superTruncGaussian
-import pandas as pd
-from PhysicalPlate import Box
+from PhysicalPlate import Box, Density, Density2Level
 import h5py
 from ToolsIFTA import InitializeLens, InitializePropagator, SSEPlotting
 from cmocean import cm
@@ -30,9 +29,9 @@ ncpu = -1
 
 
 def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
-        size = 0, plot = False, SSE = False, save = '',
-        rounding = None, boxing = None, wavelength = 253e-9, randomSeed = 15,
-        extent = [-1.27 * 1e-2, 1.27 * 1e-2], realLens = None):
+        size = 0, plot = False, SSE = False, save = '', nProp = 1.00030067,
+        steps = None, boxing = None, wavelength = 253e-9, randomSeed = 15, z0 = 1.1e-3,
+        nLens = 1.5058500198911624, extent = [-1.27 * 1e-2, 1.27 * 1e-2], realLens = None):
     """
     
     Optical Iterative Fourier Transform Algorithm 
@@ -72,11 +71,17 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     # --- Initializes a randomized phase mask to improve the gradient descent --- 
     np.random.seed(randomSeed) #Setting a randomized seed for 
     phase = np.random.rand(inputField.shape[0], inputField.shape[1]) * pi
+    
+    # Initializing through a smaller phase mask
+    '''filepath = '/Users/thomas/Desktop/SLAC 2025/Simulations/Phase Plate/IFTAPhases/Manufacturing/Phase_1inch.h5'
+    with h5py.File(filepath, 'r') as file:
+        phase = file['Phase'][:]'''
+    
     #phase = np.tile([[pi,-pi],[-pi,pi]], (int(inputField.shape[0]/2), int(inputField.shape[1]/2)))
     
     field = np.zeros_like(inputField)
     outputFP = []
-    k0 = 2 * pi / wavelength
+    #k0 = 2 * pi / wavelength
     
     # --- Initialising the target amplitude ---
     if target is None:
@@ -87,24 +92,39 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     # --- Initialising the propagation matrices ---
     # This saves on computation time for each iteration
     
-    # Initialising the propagator k space
-    propagatorForward = InitializePropagator(inputField, z, padding = size)
-    propagatorBackward = InitializePropagator(inputField, -z, padding = size)
+    # Initialising the propagator k space for after lens
+    propagatorForward = InitializePropagator(inputField, z, padding = size, nProp = nProp, extent = extent)
+    propagatorBackward = InitializePropagator(inputField, -z, padding = size, nProp = nProp, extent = extent)
+    # Initialising the propagator k space for before lens (in lens)
+    if z0 != None:
+        propagatorForward0 = InitializePropagator(inputField, z0, padding = size, nProp = nLens, extent = extent)
+        propagatorBackward0 = InitializePropagator(inputField, -z0, padding = size, nProp = nLens, extent = extent)
     # Initialising the lens meshgrid
-    lensShiftForward = InitializeLens(inputField, f)
-    lensShiftBackward = InitializeLens(inputField, -f)
+    lensShiftForward = InitializeLens(inputField, f, nLens = nLens, nProp = nProp, extent = extent)
+    lensShiftBackward = InitializeLens(inputField, -f, nLens = nLens, nProp = nProp, extent = extent)
     
     # --- Preparing mask for Real Lens ---
     x_, y_ = np.linspace(extent[0], extent[1], inputField.shape[0]), np.linspace(extent[0], extent[1], inputField.shape[1])
     X, Y = np.meshgrid(x_, y_)
     rSquare = (X**2 + Y**2)
-    outsideLens = (np.sqrt(rSquare) >= extent[1])
     
+    ###################### Adapted to 1/2 inch lens #########################
+    outsideLens = (np.sqrt(rSquare) >= 1.27e-2) # 1.27e-2/2 for 1/2 inch 
+    #########################################################################
     
     for i in tqdm(range(iteration), desc = 'Iterations of IFTA'):
         
         # --- Input the initial Intensity and keep the varying phase --- 
         field = inputAmplitude * np.exp(1j * phase)
+    
+        # --- Single Lens Optic Propagation ---
+        if z0 != None:
+            # Propagate the beam to the lens
+            paddedField = fastOn(field, size)
+            kPadded = fftshift(fft2(paddedField, workers = ncpu))
+            kPadded *= propagatorForward0
+            outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
+            field = fastOff(outputPadded, size)
         
         # --- Propagate to Fourier Plane --- 
         # Apply the forward lens shift to the beam
@@ -137,14 +157,23 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         field = fastOff(outputPadded, size)
         # Undoing the lens transformation
         field *= lensShiftBackward
-
+        # --- Single Lens Optic Propagation ---
+        if z0 != None:
+            # Propagate the beam to the lens
+            paddedField = fastOn(field, size)
+            kPadded = fftshift(fft2(paddedField, workers = ncpu))
+            kPadded *= propagatorBackward0
+            outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
+            field = fastOff(outputPadded, size)
         
         # --- Collect the new phase --- 
         phase = np.angle(field)
         
         # --- Adjusting the phase to error --- 
-        if rounding != None: #Sets the phase to discrete levels through rounding error
-            phase = np.round(phase, rounding)
+        if steps != None: #Sets the phase to discrete levels through rounding error
+            phase, thickness = Density(phase, levels = steps)
+            if steps == 3:
+                phase, thickness = Density2Level(phase, 0, levels = steps)
         if boxing !=None: #Averages over given pixel size for transverse constraints
             phase = Box(phase, boxing)
         if realLens != None: #Sets the phase to 0 outside the lens dimensions
@@ -190,9 +219,9 @@ if __name__ == "__main__":
     # --- Test Case --- 
     
     # --- Globals --- 
-    extent = [-1.27 * 1e-2, 1.27 * 1e-2]
+    extent = [-1.5 * 1e-2, 1.5 * 1e-2]
     wavelength = 253 * 1e-9
-    w0 = 4 * 1e-3
+    w0 = 6 * 1e-3
     f = 1.2
 
     # --- Testing the IFTA ---
@@ -216,81 +245,6 @@ if __name__ == "__main__":
     target = flatTop(field, extent = extent, w0 = 6e-4, plot = True)
     
     # --- Finding the phase necessary for transformation ---
-    phase = IFTA(field, plot = True, SSE=True, iteration = 30,
-                 target = None, size = 1, boxing = None, realLens = True, rounding = None)
+    phase = IFTA(field, plot = True, SSE=True, iteration = 30, extent = extent,
+                 target = None, size = 1, boxing = None, realLens = True, steps = None)
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
