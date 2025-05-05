@@ -6,7 +6,8 @@ Created on Wed Jul 10 16:44:28 2024
 Setting up the limitations in our simulation of the phase plate 
 
 @author: thomas
-"""import numpy as np
+"""
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import h5py
