@@ -21,7 +21,7 @@ from PIL import Image
 from PlottingTools import StanfordColormap
 stanford_colormap = StanfordColormap()
 
-def superTruncGaussian(inputBeam, w0 = 10.20116e-4, n = 1, trunc = 50,
+def superTruncGaussian(inputBeam, targetRadius = (1.2/2)*1e-3, n = 1, trunc = 50,
                        extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False):
     """
     Generates an array with the intensity pattern of a truncated super Gaussian beam transverse profile
@@ -57,15 +57,18 @@ def superTruncGaussian(inputBeam, w0 = 10.20116e-4, n = 1, trunc = 50,
     y_ = np.linspace(extent[0], extent[1], shape)
     X, Y = np.meshgrid(x_, y_)
     rSquare = (X**2 + Y**2)
-    intensity = np.abs(np.exp(-(rSquare/ w0**2)**n))**2
+    # Setting the waist such that the beam intenisty is cut at the trunc percentage
+    sigma = targetRadius / (2*np.sqrt(2*np.log(100/trunc))) * 2 * np.sqrt(2)
+    intensity = np.abs(np.exp(-(rSquare/ (2*sigma**2))**n))**2
+
     if trunc != None: 
         intensity[intensity < trunc * np.max(intensity) / 100] = 0
-        area = np.sum((intensity>1e-5))
-        radius = np.sqrt(area / np.pi) * (extent[1]/500)
-        print(radius)
+        area = np.sum((intensity>0)) # (intensity>1e-5)
+        radius = np.sqrt(area / np.pi) * (2*extent[1]/intensity.shape[1])
+        print('Target Diameter:', 2*radius *1e3 , 'mm')
     
     if plot:
-        plt.imshow(intensity, extent = [extent[0], extent[1], extent[0], extent[1]], cmap = stanford_colormap)
+        plt.imshow(intensity, extent = [extent[0], extent[1], extent[0], extent[1]], cmap = cmo.curl)
         #plt.title("Cut-Guassian Target")
         plt.xlabel('Distance (m)', size = 13)
         plt.ylabel('Distance (m)', size = 13)
