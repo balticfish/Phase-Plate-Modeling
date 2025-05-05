@@ -207,7 +207,7 @@ def scalarPlotting (outputs, target, plotting = True):
 
 
 def InitializePropagator(inputBeam, z, wavelength = 253e-9, padding = 1,
-                         extent = [-1.27 * 1e-2, 1.27 * 1e-2]):
+                         extent = [-1.27 * 1e-2, 1.27 * 1e-2], nProp = 1):
     """
     Applying the propagator transfer function to an input Complex Beam 
 
@@ -240,7 +240,7 @@ def InitializePropagator(inputBeam, z, wavelength = 253e-9, padding = 1,
     """
     
     # --- Extracting Parameters ---
-    k0 = 2 * pi / wavelength
+    k0 = 2 * pi / (wavelength/nProp)
     
     # --- Step 1 : Transforming the input beam to k-space ---
     #Apply the padding to ensure high quality FFT
@@ -265,7 +265,7 @@ def InitializePropagator(inputBeam, z, wavelength = 253e-9, padding = 1,
     
     return propagator
 
-def InitializeLens(inputBeam, f, wavelength = 253e-9,
+def InitializeLens(inputBeam, f, wavelength = 253e-9, nLens = None, nProp = 1,
                    extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False):
     """
     Applying a lens transformation to an incoming Complex Beam
@@ -298,8 +298,13 @@ def InitializeLens(inputBeam, f, wavelength = 253e-9,
     """
     
     # --- Extracting Parameters --- 
-    k0 = 2 * pi / wavelength
+    k0 = 2 * pi / (wavelength)
     inputShape = inputBeam.shape
+
+    # --- Adapting the focal length to the propagation medium ---
+    if nLens != None:
+        f = f * (1-nLens)/(nProp - nLens)
+        #k0 *= nLens
     
     # --- Building the transfer function ---
     x_, y_ = np.linspace(extent[0], extent[1], inputShape[0]), np.linspace(extent[0], extent[1], inputShape[1])
