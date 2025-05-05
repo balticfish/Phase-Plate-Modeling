@@ -73,15 +73,6 @@ def Centroid(im):
 
 
 
-def generateData(r, sigma, a):
-    np.random.seed(0)
-    yTrue = truncGaussianModel(r, sigma, a)
-    yData = yTrue + 0.01 * np.random.normal(size=len(r))
-    return yData, yTrue
-
-
-
-
 
 def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel Beam after Propagation",
              truncRadius = 6e-4, maxROI = 220):
