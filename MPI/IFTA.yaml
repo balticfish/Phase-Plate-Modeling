@@ -1,0 +1,18 @@
+# IFTA.yaml
+iteration: 30
+f: 1.2
+z: 1.2
+z0: 0.0011
+size: 0
+plot: false
+SSE: true
+steps: null
+boxing: null
+realLens: false
+save: Test_IFTA_MPI_3.h5
+randomSeed: 20
+nProp: 1.0002950541290963
+nLens:  1.5014613746747054
+extent: [ -0.0127, 0.0127 ]
+wavelength: 2.62e-7
+inputWidth : 0.008
