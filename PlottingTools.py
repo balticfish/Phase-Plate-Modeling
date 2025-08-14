@@ -11,7 +11,7 @@ Stanford ColorMap and other Plotting tools
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import pi
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, LogNorm
 from matplotlib.colors import ListedColormap
 import matplotlib.gridspec as gridspec
 from cmocean import cm as cmo
@@ -19,10 +19,12 @@ from matplotlib.ticker import ScalarFormatter
 import h5py
 from scipy.optimize import curve_fit
 from scipy.special import erf
+from matplotlib.colors import to_rgb
+from scipy.fft import fft2, ifft2, fftshift
+from scipy.signal import correlate2d
 
 
-
-def StanfordColormap():
+def StanfordColormapOld():
     
     # Define the Stanford colors
     stanford_colors = {
@@ -44,6 +46,48 @@ def StanfordColormap():
         stanford_colors['green'],
         stanford_colors['yellow'],
         stanford_colors['red']
+    ]
+    
+    # Create a LinearSegmentedColormap
+    stanford_colormap = LinearSegmentedColormap.from_list("stanford_jet", list(zip(positions, color_list)))
+    return stanford_colormap
+
+def StanfordColormap():
+    
+    
+    # Define the Stanford colors
+    raw = {
+    'Dark Sky': "#016895",
+    'Sky':  "#4298B5",
+    #'Bay':   "#6FA287",
+    #'Palo Verde':     "#279989",
+    'Palo Verde Light':  "#59B3A9",
+    'Poppy Light' : "#F9A44A",
+    'Illuminating' : "#FEDD5C",
+    #'Illuminating Light' : "#FFE781",
+    'Stanford Red Light' : "#B83A4B",
+    'Stanford Cardinal Red': "#8C1515"
+    }
+    
+    stanford_colors = {name: to_rgb(h) for name, h in raw.items()}
+    
+    # Define the key color positions in the colormap
+    positions = [0.0, 0.2, 0.3, 0.5, 0.7, 0.93, 1]
+    
+    # Define the colors corresponding to each position
+    color_list = [
+        stanford_colors['Dark Sky'],
+        stanford_colors['Sky'],
+        #stanford_colors['Bay'],
+        #stanford_colors['Palo Verde'],
+        stanford_colors['Palo Verde Light'],
+        stanford_colors['Illuminating'],
+        stanford_colors['Poppy Light'],
+        
+        #stanford_colors['Illuminating Light'],
+        stanford_colors['Stanford Red Light'],
+        stanford_colors['Stanford Cardinal Red']
+
     ]
     
     # Create a LinearSegmentedColormap
@@ -73,8 +117,17 @@ def Centroid(im):
 
 
 
+'''def generateData(r, sigma, a):
+    np.random.seed(0)
+    yTrue = truncGaussianModel(r, sigma, a)
+    yData = yTrue + 0.01 * np.random.normal(size=len(r))
+    return yData, yTrue'''
 
-def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel Beam after Propagation",
+
+
+
+
+def plotBeam(field, extent = [-1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel Beam after Propagation",
              truncRadius = 6e-4, maxROI = 220):
     
     # --- Extract the Globals --- 
@@ -175,9 +228,6 @@ def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel
         a : TYPE, optional
             DESCRIPTION. The default is 0.6e-3.
 
-        References:
-        Alex Halavanau's derivation of the the analytical Truncated Gaussian 
-        
         Returns
         -------
         TYPE
@@ -252,7 +302,8 @@ def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel
     
     # Plotting the Amplitude of the beam
     Amplitude = ax2.imshow(np.abs(fieldROI), cmap = cmo.curl
-                      , extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]])
+                      , extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]],
+                      vmin = 0)
     ax2.set_title("Amplitude")
     fig.colorbar(Amplitude, ax = ax2, orientation = 'horizontal')
     ax2.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
@@ -261,7 +312,8 @@ def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel
     
     # Plotting the Intensity of the beam
     Intensity = ax3.imshow(np.abs(fieldROI)**2, cmap = stanford_colormap,
-                           extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]])
+                           extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]], 
+                           vmin = 0)
     ax3.set_title("Intensity")
     fig.colorbar(Intensity, ax = ax3, orientation = 'horizontal')
     ax3.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
@@ -306,6 +358,174 @@ def plotBeam(field, extent = [1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel
     
     # Extra Arrangements
     fig.tight_layout()
+    plt.show()
+    return
+
+
+def plotBeamFlatTop(field, extent = [-1.27e-2, 1.27e-2], fitCut = True, title = "Fresnel Beam after Propagation",
+             truncRadius = 6e-4, maxROI = 220):
+    
+    # --- Extract the Globals --- 
+    stanford_colormap = StanfordColormap()
+    pixelSize = 2 * extent[1] / field.shape[-2]
+    
+    # --- Centering the beam and reducing the ROI ---
+    #Should keep the grid unchanged aka not moving the 0 of the grid 
+    
+    # Extract the centroid position
+    xCentroid, yCentroid = Centroid(np.abs(field)**2) 
+
+    fieldROI = field[int(xCentroid-maxROI): int(xCentroid+maxROI), int(yCentroid-maxROI):int(yCentroid+maxROI)]
+    
+    a = truncRadius
+
+    plotExtent = [-pixelSize * (maxROI + (field.shape[0]/2 - xCentroid)), pixelSize * (maxROI + (field.shape[0]/2 - xCentroid))]
+    
+    # --- Extract the transverse Intensity cut --- 
+    cutIntensityROI = np.abs(field[int(xCentroid-maxROI): int(xCentroid+maxROI), int(yCentroid)])**2
+    norm = np.sum(cutIntensityROI)
+    # --- Determine the FWHM | 1/e2 of the beam --- 
+    
+    
+    # --- Initialising the fit functions ---
+    def fitData(xSpace, yData):
+        """
+        Fit the erf_model to the provided data.
+
+        Parameters:
+        x_data : array-like
+            Input data.
+        y_data : array-like
+            Output data to fit.
+
+        Returns:
+        popt : array
+            Optimized parameters.
+        pcov : 2D array
+            Covariance of the optimized parameters.
+        """
+        initial_guess = [1/(2*a), 1e-4]  # Initial parameter guesses
+        popt, pcov = curve_fit(FlatTop, xSpace, yData, p0=initial_guess)
+        return popt, pcov
+    
+    def FlatTop(x, A, sigma):
+        a = truncRadius
+        if truncRadius == None:
+            a = (11.1*1e-3)/2
+        
+        
+        left = -a
+        right = a 
+        
+        return A * (erf((x-left)/sigma) - erf((x-right)/sigma))
+    
+    
+    # --- Fitting the data to the trunc-Gaussian Model ---
+    if fitCut == True:
+        # Creating x values
+        truncROI = int(truncRadius / pixelSize)
+        xSpaceTrunc = np.linspace(-truncRadius, truncRadius, int(2*truncROI+1))
+        
+        xPlot = np.linspace(plotExtent[0], plotExtent[1], len(cutIntensityROI))
+        cutFlatTopROIFit = np.abs(field[int(xCentroid-truncROI):int(xCentroid+truncROI+1), int(yCentroid)])**2
+        #Changing the normalization to match the fit
+        norm = np.sum(cutFlatTopROIFit)
+        cutFlatTopROINormFit = cutFlatTopROIFit / norm
+
+        # Creating a truncGaussian Fit
+        popt, pcov = fitData(xPlot, cutIntensityROI)
+        
+        model = FlatTop(xPlot, *popt)
+        print(popt, pcov)
+
+        #print(f'Uncertainty = {np.sqrt(pcov[0][0])}')
+        print(f'A = {popt[0]} ± {np.sqrt(pcov[0][0])}')
+        
+        
+    
+    # --- Plotting ---
+    # Extracting the necessary parameters
+
+    plotExtent = [-pixelSize * (maxROI + (field.shape[0]/2 - xCentroid)), pixelSize * (maxROI + (field.shape[0]/2 - xCentroid))]
+
+    # Creating the figure 
+    fig = plt.figure(figsize=(12, 8))
+    gs = gridspec.GridSpec(2, 3, height_ratios=[1, 0.5])
+    ax1 = fig.add_subplot(gs[0,0])
+    ax2 = fig.add_subplot(gs[0,1])
+    ax3 = fig.add_subplot(gs[0,2])
+    ax4 = fig.add_subplot(gs[1,:])
+    
+    # Plotting the Phase of the beam
+    Phase = ax1.imshow(np.angle(fieldROI), cmap = cmo.curl,
+                      extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]])
+    
+    ax1.set_title("Phase")
+    fig.colorbar(Phase, ax = ax1, orientation = 'horizontal')
+    ax1.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax1.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax1.set_xlabel('Beam size (m)')
+    ax1.set_ylabel('Beam size (m)')
+    
+    # Plotting the Amplitude of the beam
+    Amplitude = ax2.imshow(np.abs(fieldROI), cmap = cmo.curl
+                      , extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]])
+    ax2.set_title("Amplitude")
+    fig.colorbar(Amplitude, ax = ax2, orientation = 'horizontal')
+    ax2.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax2.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax2.set_xlabel('Beam size (m)')
+    
+    # Plotting the Intensity of the beam
+    Intensity = ax3.imshow(np.abs(fieldROI)**2, cmap = stanford_colormap,
+                           extent = [plotExtent[0], plotExtent[1], plotExtent[0], plotExtent[1]])
+    ax3.set_title("Intensity")
+    fig.colorbar(Intensity, ax = ax3, orientation = 'horizontal')
+    ax3.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax3.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax3.set_xlabel('Beam size (m)')
+    
+    # Plotting the Cut Intensity Profile of the beam
+    xPlot = np.linspace(plotExtent[0], plotExtent[1], len(cutIntensityROI))
+    cutIntensityROINorm = cutIntensityROI/norm
+    ax4.plot(xPlot, cutIntensityROINorm)
+    #ax4.plot(xSpaceTrunc, cutIntensityROINormFit) #Changed briefly for testing
+
+    # Formatting the axes
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-4, 4))
+    ax4.xaxis.set_major_formatter(formatter)
+    ax4.yaxis.set_major_formatter(formatter)
+    ax4.set_title("Center cut of the Intensity of the propagated beam")
+    ax4.set_xlabel('Beam size (m)')
+    ax4.set_ylabel('Normalized Intensity')
+    
+    if fitCut == True:
+        # Overlaying the cut-Gaussian fit 
+        ax4.plot(xPlot, model/np.sum(model), 'r--')
+        
+        edge = int(model.shape[0]/2 - truncRadius/pixelSize+2)
+        #ax4.plot(-truncRadius + 2*pixelSize, model[edge]/np.sum(model), 'ko')
+        # Adding a text box giving the cutPercentage for the truncGaussian Fit ---
+        cutString = f'Flatness = {model[edge]/model[int(model.shape[0]/2)]*100:.2f}%'
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        ax4.text(0.8, 0.9, cutString, transform=ax4.transAxes, fontsize=14,
+                verticalalignment='top', bbox=props)
+        
+        
+    # --- Extra decoration ---
+    # Plotting the expected truncation radius
+    if truncRadius != None:
+        ax4.axvline(-truncRadius,linestyle = '--', color = 'k', alpha = 0.5)
+        ax4.axvline(truncRadius,linestyle = '--', color = 'k', alpha = 0.5)
+    
+    # Adding a title
+    fig.suptitle(title, size = 20)
+    
+    # Extra Arrangements
+    fig.tight_layout()
+    plt.show()
     return
 
 
@@ -364,6 +584,144 @@ def superTruncGaussian(inputBeam, targetRadius =(1.2e-3)/2, n = 1, trunc = 50,
         
     return intensity
 
+def autocorrelation_2d_fft(image, pad=True):
+    """FFT-based autocorrelation with optional padding.
+    
+    Parameters:
+    image : ndarray
+        2D input image.
+    pad : bool, optional
+        If True, pad image to compute linear autocorrelation. If False, use circular correlation.
+    
+    Returns:
+    autocorr : ndarray
+        Normalized 2D autocorrelation.
+    """
+    image = image.astype(float)
+    image -= np.mean(image)  # Subtract mean to remove DC component
+    
+    if pad:
+        # Pad to (2N-1) x (2M-1) to avoid wrap-around
+        N, M = image.shape
+        padded_shape = (2 * N - 1, 2 * M - 1)
+        padded_image = np.zeros(padded_shape)
+        padded_image[:N, :M] = image
+    else:
+        padded_image = image
+    
+    # Compute 2D FFT
+    fft_image = fft2(padded_image)
+    
+    # Power spectrum (conjugate multiplication)
+    power_spectrum = fft_image * np.conj(fft_image)
+    
+    # Inverse FFT to get autocorrelation
+    autocorr = fftshift(np.real(ifft2(power_spectrum)))
+    
+    # Normalize autocorrelation
+    autocorr /= np.max(autocorr)
+
+    if pad:
+        start_x, start_y = (padded_shape[0] - N) // 2, (padded_shape[1] - M) // 2
+        autocorr = autocorr[start_x:start_x + N, start_y:start_y + M]
+    
+    return autocorr
+
+def estimate_speckle_size(autocorr, pixel_size=1.0):
+    # Get the center of the autocorrelation (image center)
+    # Written with AI. To Grok is to understand.
+    ny, nx = autocorr.shape
+    center_y, center_x = ny // 2, nx // 2
+    
+    # Extract radial profile from center
+    x = np.arange(nx) - center_x
+    y = np.arange(ny) - center_y
+    xx, yy = np.meshgrid(x, y)
+    r = np.sqrt(xx**2 + yy**2)
+    
+    # Find the radius where autocorrelation drops to 1/e
+    radial_profile = []
+    r_values = np.unique(np.round(r).astype(int))
+    for radius in r_values:
+        mask = (np.round(r).astype(int) == radius)
+        if np.sum(mask) > 0:
+            radial_profile.append(np.mean(autocorr[mask]))
+    
+    radial_profile = np.array(radial_profile)
+    
+    # Find speckle size (FWHM of autocorrelation)
+    threshold = 1 / np.e
+    idx = np.where(radial_profile <= threshold)[0]
+    if len(idx) > 0:
+        speckle_radius = r_values[idx[0]] * pixel_size
+    else:
+        speckle_radius = np.nan
+    
+    return speckle_radius, r_values * pixel_size, radial_profile
+
+
+def AutoCorr(field, extent = [-1.27e-2, 1.27e-2], title = "Characteristic Speckle Analysis",
+             truncRadius = 6e-4, clip = 0.7):
+    pixelSize = 2*extent[1] / field.shape[0]
+    intensity = np.abs(field)**2
+    # ––– Do an Autocorrelation of each image ––––––––––––––
+    # Need to reduce the ROI to only within the beam (no outside) <1/sqrt(2) to be within the beam only
+    autoCorrExtent     = [int((field.shape[0]/2 - clip*truncRadius/pixelSize)),
+                          int((field.shape[0]/2 + clip*truncRadius/pixelSize))] 
+    
+    autoCorrData   = intensity[autoCorrExtent[0] : autoCorrExtent[1],
+                               autoCorrExtent[0] : autoCorrExtent[1]]
+    autoCorrData   = autoCorrData # the outputFP is an intensity for now 
+    autoCorrData  /= np.sum(autoCorrData)
+
+    # Perform the autocorrelation
+    autocorr = autocorrelation_2d_fft(autoCorrData, pad = True)
+    # Extract stats 
+    speckle_radius, r_values, radial_profile = estimate_speckle_size(autocorr, pixel_size = pixelSize)
+    
+    # ––– Plotting the results –––––––––––––––––––––––––––––
+    
+    fig = plt.figure(figsize=(12, 5))
+    gs = gridspec.GridSpec(1, 3)
+    ax1 = fig.add_subplot(gs[0,0])
+    ax2 = fig.add_subplot(gs[0,1])
+    ax3 = fig.add_subplot(gs[0,2])
+    
+    # ––– Plotting the Intensity pattern –––––––––––––––––––
+    ax1.set_title("Speckle Pattern")
+    Intensity = ax1.imshow(autoCorrData,
+               cmap = StanfordColormap(),
+               extent = [autoCorrExtent[0]*pixelSize*1e3, autoCorrExtent[1]*pixelSize*1e3,
+                         autoCorrExtent[0]*pixelSize*1e3, autoCorrExtent[1]*pixelSize*1e3],
+               vmin = 0)
+    fig.colorbar(Intensity, ax = ax1, orientation = 'horizontal')
+    ax1.set_xlabel("Distance (mm)")
+    ax1.set_ylabel("Distance (mm)")
+    
+    # ––– Plotting the autocorrelation ––––––––––––––––––––
+    ax2.set_title("Autocorrelation")
+    Autocorrelation = ax2.imshow(autocorr, cmap = cmo.haline, norm = LogNorm())
+    fig.colorbar(Autocorrelation, ax = ax2, orientation = 'horizontal')
+    ax2.set_xlabel("Distance (pixels)")
+    ax2.set_ylabel("Distance (pixels)")
+    
+    # ––– Plotting the radial autocorrelation –––––––––––––
+    ax3.set_title("Radial cut of AutoCorrelation")
+    ax3.plot(r_values*1e6, radial_profile)
+    ax3.hlines(y=np.max(radial_profile)/2, xmin = r_values[0], xmax = r_values[-1],
+               color = 'r', linestyle = '--',
+               label = f"Speckle radius {speckle_radius*1e6:.2f} um")
+    ax3.set_xlabel("Distance (um)")
+    ax3.set_ylabel("Intensity")
+    ax3.legend()
+    
+    # ––– Extra Plotting Decoration –––
+    fig.suptitle(title)
+    plt.tight_layout()
+    plt.show()
+    
+    return speckle_radius, autocorr, r_values, radial_profile
+
 
 
 if __name__ == "__main__":
@@ -375,12 +733,20 @@ if __name__ == "__main__":
     
     targetRadius = (1.2/2)*1e-3 # Radius of the target that should be achieved after propagation
     trunc = 50
-    test = superTruncGaussian(testArray, targetRadius = targetRadius, n = 1, trunc = trunc, 
+    test = superTruncGaussian(testArray, targetRadius = targetRadius, n = 1, trunc = 70, 
                            extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = True)
-    test += (np.random.rand(testArray.shape[0], testArray.shape[1]))*1e-1
+    #test += (np.random.rand(testArray.shape[0], testArray.shape[1]))*1e-1
     plotBeam(np.sqrt(test), title='Truncation test', fitCut = True, truncRadius= targetRadius, extent = extent)
     
     xSpace = np.linspace(-0.6e-3, 0.6e-3, num = 97)
-    modelFit = truncGaussianModel(xSpace, 0.509593e-3)
+    #modelFit = truncGaussianModel(xSpace, 0.509593e-3)
 
+    
+    '''filepath = 'SimulatedData.h5'
+    with h5py.File(filepath, 'r') as file:
+        field = file['OutputBeam'][:]
 
+    plt.imshow(np.abs(field)**2)
+    plotBeam(field, title = 'Output beam', fitCut = True, truncRadius=(5.5/2 * 1e-3), extent = [-1.5*1.27 * 1e-2, 1.5*1.27 * 1e-2])'''
+    
+    
