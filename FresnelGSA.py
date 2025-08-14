@@ -152,15 +152,15 @@ def Propagate(inputBeam, z, wavelength = 253e-9, w0 = 4e-3, padding = 1,
     
     # --- Step 2 Apply the propagator --- 
     # Creating k-Space coordinates
-    kx_ = fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
-    ky_ = fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
+    kx_ = 2*pi*fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
+    ky_ = 2*pi*fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
     kx_ = fftshift(kx_)
     ky_ = fftshift(ky_)
     kx, ky = np.meshgrid(kx_, ky_)
     
 
     # Propagator taken from K Khare (see ref)
-    propagator = np.exp(1j * z * np.sqrt(k0**2 - 4 * pi**2 * (kx**2 + ky**2)))
+    propagator = np.exp(1j * z * np.sqrt(k0**2 - (kx**2 + ky**2)))
     #propagator = np.exp(-1j * z * wavelength * pi *(kx**2 + ky**2))
     
     
