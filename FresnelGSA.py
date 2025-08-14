@@ -8,8 +8,8 @@ and to the fourier plane
 
 Aiming to get the following parameters:
     Wavelength: 253 nm
-    Beam width (1/e2) upstream of the phase plate: 8 mm
-    Beam diameter in focus: 1.2 mm
+    Beam size upstream of the phase plate: 8 mm
+    Beam size in focus: 1.2 mm
     Target beam profile: cut Gaussian at 50%
     Focusing (Fourier) lens: f=1.2 m
 
@@ -23,7 +23,7 @@ from padding import fastOn, fastOff
 from scipy.fft import fft2, ifft2, fftshift, ifftshift, fftfreq
 from matplotlib.colors import LogNorm
 import matplotlib.gridspec as gridspec
-from Targets import hole, stanford, superTruncGaussian, flatTop, Lenna
+from Targets import hole, stanford, superTruncGaussian, flatTop, Lenna, Aligner, Aligner2, CathodeCleaner, LaserHeater2
 import h5py
 from matplotlib.ticker import ScalarFormatter
 from scipy.optimize import curve_fit
@@ -33,12 +33,19 @@ from cmocean import cm as cmo
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import ListedColormap
 from IFTA import IFTA #GS_HIOA
-from PlottingTools import StanfordColormap
-#from IFTA import IFTA
+from PlottingTools import StanfordColormap, plotBeam, AutoCorr
+from HermiteGaussianFit import hermiteGaussianModes, fullHGField, HermiteGaussianMode, Plotting
+from scipy.ndimage import gaussian_filter
+from PhysicalPlate import Density
+from IFTAZone import IFTAZone
+import RefractionIndex
+
 stanford_colormap = StanfordColormap()
 
 # --- Upgrade the Scipy FFT speed --- 
 ncpu = -1
+    
+
 
 
 def Gaussian(sizeFactor = 11, wavelength = 253e-9, w0 = 4e-3,
@@ -79,18 +86,19 @@ def Gaussian(sizeFactor = 11, wavelength = 253e-9, w0 = 4e-3,
     
     # --- Creating the gaussian field using complex beam parameter ---    
     field = 1/q0 * np.exp(- 1j * k0 * rSquare / (2 * q0))
-
+    
+    
     # --- Plotting the field if required --- 
     if plot:
         
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 6))
         #Imaginary part
-        Imag = ax1.imshow(field.imag, extent = [extent[0], extent[1], extent[0], extent[1]])
-        ax1.set_title("Imaginary Part")
+        Imag = ax1.imshow(np.angle(field), extent = [extent[0], extent[1], extent[0], extent[1]], cmap = stanford_colormap)
+        ax1.set_title("Phase")
         fig.colorbar(Imag, ax = ax1, orientation = 'horizontal')
         #Real part
-        Real = ax2.imshow(field.real, extent = [extent[0], extent[1], extent[0], extent[1]])
-        ax2.set_title("Real Part")
+        Real = ax2.imshow(np.abs(field), extent = [extent[0], extent[1], extent[0], extent[1]], cmap = stanford_colormap)
+        ax2.set_title("Amplitude")
         fig.colorbar(Real, ax = ax2, orientation = 'horizontal')
         #Intensity
         Intensity = ax3.imshow(np.abs(field)**2, cmap = stanford_colormap, 
@@ -152,21 +160,21 @@ def Propagate(inputBeam, z, wavelength = 253e-9, w0 = 4e-3, padding = 1,
     
     # --- Step 2 Apply the propagator --- 
     # Creating k-Space coordinates
-    kx_ = 2*pi*fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
+    kx_ = 2*pi*fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape) 
     ky_ = 2*pi*fftfreq(kShape, d = (2**(1+padding)) * extent[1]/kShape)
     kx_ = fftshift(kx_)
     ky_ = fftshift(ky_)
     kx, ky = np.meshgrid(kx_, ky_)
     
-
+    
     # Propagator taken from K Khare (see ref)
-    propagator = np.exp(1j * z * np.sqrt(k0**2 - (kx**2 + ky**2)))
+    propagator = np.exp(1j * z * np.sqrt(k0**2 -  (kx**2 + ky**2)))#4 * pi**2 *
     #propagator = np.exp(-1j * z * wavelength * pi *(kx**2 + ky**2))
     
     
     #Apply the propagator in k space
     kPadded = kBeam * propagator
-    
+
     # --- Step 3 : Return to real space ---
     #Return to Cartesian
     outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
@@ -188,7 +196,7 @@ def Propagate(inputBeam, z, wavelength = 253e-9, w0 = 4e-3, padding = 1,
             file.create_dataset('PixelSize', data = pixelSize)
             file.create_dataset('InputShape', data = inputBeam.shape)
         
-    return outputBeam  
+    return outputBeam 
 
 
 
@@ -256,7 +264,7 @@ def phasePlate(inputBeam, hologram = [30, None], wavelength = 253e-9, f = 1.2,
                size = 0):
     """
     Phase Plate transfer function
-
+    
     Parameters
     ----------
     inputBeam : np.array
@@ -292,10 +300,10 @@ def phasePlate(inputBeam, hologram = [30, None], wavelength = 253e-9, f = 1.2,
         with h5py.File(hologram, 'r') as file:
             hologram = file['Phase'][:]
     
-    
+    print('Unique phase levels in phase plate', np.unique(hologram))
     
     # --- Adding etching uncertainty ---
-    uncertainty = np.zeros(hologram.shape)
+    '''uncertainty = np.zeros(hologram.shape)
     #print(np.unique(hologram))
     randomOffset = np.random.rand(len(np.unique(hologram)))
 
@@ -304,7 +312,7 @@ def phasePlate(inputBeam, hologram = [30, None], wavelength = 253e-9, f = 1.2,
         uncertainty[hologram == phase] = randomOffset[i] * 0.011175626040438 * 0
         
     uncertainty = MaskOptics(uncertainty, 1.27e-2, extent = extent)
-    hologram += uncertainty
+    hologram += uncertainty'''
     inputPhase = np.angle(inputBeam)
     phasePlate = np.subtract(hologram, inputPhase)
     
@@ -343,7 +351,6 @@ def phasePlate(inputBeam, hologram = [30, None], wavelength = 253e-9, f = 1.2,
     return outputBeam
 
 
-
 def MaskOptics(inputBeam, maskRadius, extent = [1.27e-2, 1.27e-2]):
     """
     Apply a crude Iris to the beam removing the field outside of the given aperture
@@ -378,50 +385,57 @@ def MaskOptics(inputBeam, maskRadius, extent = [1.27e-2, 1.27e-2]):
     return outputBeam
 
 
-
 if __name__ == "__main__":
-    # --- Globals ---
-    wavelength = 253 * 1e-9
-    w0 = 8*1e-3 # 1 inch diameter facet #6 * 1e-3
-    f = 1.2
-    extent = [-1.27 * 1e-2, 1.27 * 1e-2]
+    # ––– Globals –––
+    wavelength = 253e-9#257.5 * 1e-9
+    w0 = 8*1e-3    # Beam waist radius in 1/e^2
+    f = 1.2#1.2968270716706576
+    extentFactor = 1
+    extent = extentFactor * np.array([-1.27 * 1e-2, 1.27 * 1e-2])
     z0 = pi/wavelength * w0**2
-    randomSeed = 20# 30 was used before zone plate testing
-    np.random.seed(randomSeed) #Setting the random seed for the IFTA
-    nLens = 1.5058500198911624 # None
-    nProp = 1.00030067 # 1
-    z1 = (2.2e-3) / 2 # None #Half thickness of a 1m lens
+    randomSeed = 20#21  # 30 was used before zone plate testing
+    np.random.seed(randomSeed)    #Setting the random seed for the IFTA
+    nLens = RefractionIndex.FusedSilica(wavelength)    #1.5058500198911624 # None
+    nProp = RefractionIndex.Air(wavelength)    #1.00030067 # 1
+
+    z1 = (2.2e-3) / 2    # None #Half thickness of a 1m lens
+    sizeFactor = 11
+    targetRadius = (1.2/2)*1e-3    # Radius of the target that should be achieved after propagation
+    trunc = 50#63#69.8 #50    # Truncation Percentage # 63
+    iterations = 100
+    steps = 3
     
-    # --- Save Files ---
+    # ––– Save Files –––
     savePhase = 'Phase.h5'
     saveData = 'SimulatedData.h5'
 
     
-    # --- Creating a Phase Plate and Propagating through it --- 
+    # ––– Creating a Phase Plate and Propagating through it –––
     
-    # --- Creating an initial beam to propagate --- 
+    # ––– Creating an initial beam to propagate –––
     inputBeam = Gaussian(sizeFactor = 11, plot = True, w0 = w0, extent = extent)
-    inputBeam = MaskOptics(inputBeam, 1.27e-2, extent = extent) #Cutting the input beam at 1 inch aperture
+    inputBeam = MaskOptics(inputBeam, extent[1], extent = extent) #Cutting the input beam at 1 inch aperture
     
-    # --- Initializing a target ---
-    targetRadius = (1.2/2)*1e-3 # Radius of the target that should be achieved after propagation
-    trunc = 69.8 # Truncation Percentage
+    # ––– Initializing a target –––
     target = superTruncGaussian(inputBeam, targetRadius = targetRadius, trunc = trunc, extent = extent)
 
-    # --- Building a phase plate to achieve the given target ---
-    plate = phasePlate(inputBeam, plot = True, nProp = nProp, nLens = nLens, hologram = [30, target],
-                       save = savePhase, f = f, z0 = z1, randomSeed = randomSeed, steps = 9, extent = extent,
-                       size = 0)
+    # ––– Building a phase plate to achieve the given target –––
+    print("\n Starting IFTA ...\n")
+    plate = phasePlate(inputBeam, plot = True, nProp = nProp, nLens = nLens, hologram = [iterations, target],
+                       save = savePhase, f = f, z0 = z1, randomSeed = randomSeed, steps = steps, extent = extent,
+                       size = 0)# hologram = [iterations, target] | savePhase 
 
-    # --- Applying the diffraction between the phase mask and the lens ---
+    # ––– Applying the diffraction between the phase mask and the lens –––
     midLens = Propagate(plate, z1, padding = 0, n = nLens, save = '')
     
     # --- Applying a lens transformation to the beam ---
     lens = Lens(midLens, f, nLens = nLens, nProp = nProp, extent = extent)
     
-    # --- Propagating the beam to the fourier plane --- 
+    # ––– Propagating the beam to the fourier plane –––
     prop = Propagate(lens, f, padding = 0, n = nProp, save = saveData, extent = extent)
 
-    # --- Plotting the beam after propagation --- 
-    plotBeam(prop, extent = extent, truncRadius = targetRadius, fitCut = True, title = 'Beam Profile at Cathode', maxROI = 600)
+    # ––– Plotting the beam after propagation ––– 
+    plotBeam(prop, extent = extent, truncRadius = targetRadius, fitCut = True, title = 'Beam Profile at Cathode', maxROI = 60)
+
+    # ––– Determine the Characteristic Speckle –––
     
