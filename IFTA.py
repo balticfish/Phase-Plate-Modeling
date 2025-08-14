@@ -19,7 +19,7 @@ from tqdm import tqdm
 from Targets import stanford, flatTop, superTruncGaussian
 from PhysicalPlate import Box, Density, Density2Level
 import h5py
-from ToolsIFTA import InitializeLens, InitializePropagator, SSEPlotting
+from ToolsIFTA import InitializeLens, InitializePropagator, SSEPlotting, Lens
 from cmocean import cm
 
 # --- Globals ---
@@ -71,6 +71,9 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     # --- Initializes a randomized phase mask to improve the gradient descent --- 
     np.random.seed(randomSeed) #Setting a randomized seed for 
     phase = np.random.rand(inputField.shape[0], inputField.shape[1]) * pi
+
+    '''phase     = np.angle(Lens(inputField, -6.85, nLens = nLens, nProp = nProp, extent = extent)) #-4.3388#-6.784
+    phase    += (np.random.rand(inputField.shape[0], inputField.shape[1]) - 0.5) *2* pi/2'''
     
     # Initializing through a smaller phase mask
     '''filepath = '/Users/thomas/Desktop/SLAC 2025/Simulations/Phase Plate/IFTAPhases/Manufacturing/Phase_1inch.h5'
