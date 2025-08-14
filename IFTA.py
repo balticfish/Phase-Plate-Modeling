@@ -21,6 +21,10 @@ from PhysicalPlate import Box, Density, Density2Level
 import h5py
 from ToolsIFTA import InitializeLens, InitializePropagator, SSEPlotting, Lens
 from cmocean import cm
+from PlottingTools import StanfordColormap
+import gc
+import RefractionIndex
+stanford_colormap = StanfordColormap()
 
 # --- Globals ---
 # --- Upgrade the Scipy FFT speed --- 
@@ -71,14 +75,22 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     # --- Initializes a randomized phase mask to improve the gradient descent --- 
     np.random.seed(randomSeed) #Setting a randomized seed for 
     phase = np.random.rand(inputField.shape[0], inputField.shape[1]) * pi
-
+    
+    #phase = (np.max(inputAmplitude) - inputAmplitude)*40*pi
+    #nLens     = RefractionIndex.FusedSilica(wavelength)
+    #nProp     = RefractionIndex.Air(wavelength)
     '''phase     = np.angle(Lens(inputField, -6.85, nLens = nLens, nProp = nProp, extent = extent)) #-4.3388#-6.784
     phase    += (np.random.rand(inputField.shape[0], inputField.shape[1]) - 0.5) *2* pi/2'''
-    
+
+    #phase += np.random.randint(2, size = (inputField.shape[0], inputField.shape[1])) * pi/24
+    #phase = phase%(2*pi)
+
     # Initializing through a smaller phase mask
-    '''filepath = '/Users/thomas/Desktop/SLAC 2025/Simulations/Phase Plate/IFTAPhases/Manufacturing/Phase_1inch.h5'
+    '''filepath = 'Phase.h5'
     with h5py.File(filepath, 'r') as file:
-        phase = file['Phase'][:]'''
+        phase = file['Phase'][:]
+        phase += np.random.rand(inputField.shape[0], inputField.shape[1]) * 1e-7
+    '''
     
     #phase = np.tile([[pi,-pi],[-pi,pi]], (int(inputField.shape[0]/2), int(inputField.shape[1]/2)))
     
@@ -96,15 +108,21 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     # This saves on computation time for each iteration
     
     # Initialising the propagator k space for after lens
-    propagatorForward = InitializePropagator(inputField, z, padding = size, nProp = nProp, extent = extent)
-    propagatorBackward = InitializePropagator(inputField, -z, padding = size, nProp = nProp, extent = extent)
+    propagatorForward = InitializePropagator(inputField, z, padding = size, nProp = nProp,
+                                             extent = extent, wavelength = wavelength)
+    propagatorBackward = InitializePropagator(inputField, -z, padding = size, nProp = nProp,
+                                              extent = extent, wavelength = wavelength)
     # Initialising the propagator k space for before lens (in lens)
     if z0 != None:
-        propagatorForward0 = InitializePropagator(inputField, z0, padding = size, nProp = nLens, extent = extent)
-        propagatorBackward0 = InitializePropagator(inputField, -z0, padding = size, nProp = nLens, extent = extent)
+        propagatorForward0 = InitializePropagator(inputField, z0, padding = size, nProp = nLens,
+                                                  extent = extent, wavelength = wavelength)
+        propagatorBackward0 = InitializePropagator(inputField, -z0, padding = size, nProp = nLens,
+                                                   extent = extent, wavelength = wavelength)
     # Initialising the lens meshgrid
-    lensShiftForward = InitializeLens(inputField, f, nLens = nLens, nProp = nProp, extent = extent)
-    lensShiftBackward = InitializeLens(inputField, -f, nLens = nLens, nProp = nProp, extent = extent)
+    lensShiftForward = InitializeLens(inputField, f, nLens = nLens, nProp = nProp,
+                                      extent = extent, wavelength = wavelength)
+    lensShiftBackward = InitializeLens(inputField, -f, nLens = nLens, nProp = nProp,
+                                       extent = extent, wavelength = wavelength)
     
     # --- Preparing mask for Real Lens ---
     x_, y_ = np.linspace(extent[0], extent[1], inputField.shape[0]), np.linspace(extent[0], extent[1], inputField.shape[1])
@@ -114,6 +132,28 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
     ###################### Adapted to 1/2 inch lens #########################
     outsideLens = (np.sqrt(rSquare) >= 1.27e-2) # 1.27e-2/2 for 1/2 inch 
     #########################################################################
+    
+    
+    # --- Creating the save file ---
+    
+    try:
+        # if hf exists and is still open...
+        if isinstance(hf, h5py.File) and hf.id.valid:
+            hf.close()
+    except NameError:
+        # hf was never created, so nothing to close
+        pass
+
+    if save:
+        saveFile = h5py.File(save, 'w')
+        outputFP = saveFile.create_dataset(
+            'OutputFP',
+            shape = (iteration, inputField.shape[0], inputField.shape[1]),
+            chunks = (1, inputField.shape[0], inputField.shape[1])
+            #dtype = 'float64'
+            )
+    else:
+        outputFP = None
     
     for i in tqdm(range(iteration), desc = 'Iterations of IFTA'):
         
@@ -142,7 +182,10 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         
         # --- Extracting Analytics --- 
         outputIter = np.power(np.abs(field), 2)
-        outputFP += [outputIter] #output fourier plane intensity at each iteration
+        if save:
+            outputFP[i, :, :] = outputIter
+            saveFile.flush()
+        #outputFP += [outputIter] #output fourier plane intensity at each iteration
         
         
         # --- Replace the intensity with the target intensity --- 
@@ -175,18 +218,24 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         # --- Adjusting the phase to error --- 
         if steps != None: #Sets the phase to discrete levels through rounding error
             if steps == 3:
-                phase, thickness = Density2Level(phase, 0, levels = steps)
+                phase, thickness = Density2Level(phase, 0, levels = steps, wavelength=wavelength, n_air=nProp, materialIndex=nLens)
+
+                #phase[(phase==pi)] = 9*pi/10
             else:
-                phase, thickness = Density(phase, levels = steps)
+                phase, thickness = Density(phase, levels = steps, wavelength=wavelength, n_air=nProp, materialIndex=nLens)
+                
+            phase[(phase==-pi)] = pi
+            
         if boxing !=None: #Averages over given pixel size for transverse constraints
             phase = Box(phase, boxing)
         if realLens != None: #Sets the phase to 0 outside the lens dimensions
             phase[outsideLens] = 0
+        gc.collect()
        
     # --- If plot is set to True the outputs will be neatly plotted ---
     if plot:
         # --- Plotting the Fourier Plane Intensity --- 
-        plt.imshow(outputFP[-1], cmap = 'viridis', extent = [extent[0], extent[1], extent[0], extent[1]])#, norm = LogNorm())
+        plt.imshow(outputIter, cmap = stanford_colormap, extent = [extent[0], extent[1], extent[0], extent[1]])#, norm = LogNorm())
         plt.title('Fourier Plane Output Intensity')
         plt.xlabel('distance (m)')
         plt.ylabel('distance (m)')
@@ -203,52 +252,62 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         plt.tight_layout()
         plt.show()
         
+    
+       
+    if save:
+        saveFile.create_dataset('Phase', data=phase)
+        saveFile.create_dataset('Target', data=target)
+        saveFile.close()
+            
+        print(f' --- Phase Mask Saved under {save} --- ')
+    
+        
     # --- If set the SSE will be computed and plotted if plot is asked --- 
     if SSE:
         # --- Plotting the quality of the output throughout the process --- 
-        SSE_result = SSEPlotting(outputFP, target, plotting = True)
-       
-    if save:
-        with h5py.File(save, 'w') as file:
-            file.create_dataset('Phase', data=phase)
-            file.create_dataset('SSE', data=SSE_result)
-            file.create_dataset('Target', data=target)
-        print(' --- Phase Mask Saved under', save, '--- ')
-    
+        if save:
+            with h5py.File(save, 'r') as file:
+                fpStack = file['OutputFP'][...]    
+            SSE_result = SSEPlotting(fpStack, target, plotting = True)
+            del fpStack
+            gc.collect()
+            with h5py.File(save, 'a') as file:
+                file.create_dataset('SSE', data=SSE_result)
+                
     return phase
 
 
 
 if __name__ == "__main__":
-    # --- Test Case --- 
+    # ––– Test Case –––
     
-    # --- Globals --- 
+    # ––– Globals –––
     extent = [-1.5 * 1e-2, 1.5 * 1e-2]
     wavelength = 253 * 1e-9
     w0 = 6 * 1e-3
     f = 1.2
 
-    # --- Testing the IFTA ---
+    # ––– Testing the IFTA –––
     z0 = pi/wavelength * w0**2
     q0 = 1j * z0
     k0 = 2* pi / wavelength
     
-    # --- Build a meshgrid to apply the gaussian too ---
+    # ––– Build a meshgrid to apply the gaussian too –––
     gridSize = 2 ** 11 +1
     x_ = np.linspace(extent[0], extent[1], gridSize)
     y_ = np.linspace(extent[0], extent[1], gridSize)
     X, Y = np.meshgrid(x_, y_)
     rSquare = X**2 + Y**2
     
-    # --- Creating the gaussian field using complex beam parameter ---    
+    # ––– Creating the gaussian field using complex beam parameter –––    
     field = 1/q0 * np.exp(- 1j * k0 * rSquare / (2 * q0))
     plt.imshow(np.abs(field)**2)
     plt.show()
     
-    # --- Initializing a target ---
+    # ––– Initializing a target –––
     target = flatTop(field, extent = extent, w0 = 6e-4, plot = True)
     
-    # --- Finding the phase necessary for transformation ---
+    # ––– Finding the phase necessary for transformation –––
     phase = IFTA(field, plot = True, SSE=True, iteration = 30, extent = extent,
                  target = None, size = 1, boxing = None, realLens = True, steps = None)
     
