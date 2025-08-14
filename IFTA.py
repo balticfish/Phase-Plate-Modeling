@@ -174,9 +174,10 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         
         # --- Adjusting the phase to error --- 
         if steps != None: #Sets the phase to discrete levels through rounding error
-            phase, thickness = Density(phase, levels = steps)
             if steps == 3:
                 phase, thickness = Density2Level(phase, 0, levels = steps)
+            else:
+                phase, thickness = Density(phase, levels = steps)
         if boxing !=None: #Averages over given pixel size for transverse constraints
             phase = Box(phase, boxing)
         if realLens != None: #Sets the phase to 0 outside the lens dimensions
