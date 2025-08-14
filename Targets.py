@@ -19,6 +19,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import ListedColormap
 from PIL import Image
 from PlottingTools import StanfordColormap
+from cmocean import cm as cmo
 stanford_colormap = StanfordColormap()
 
 def superTruncGaussian(inputBeam, targetRadius = (1.2/2)*1e-3, n = 1, trunc = 50,
@@ -90,7 +91,7 @@ def flatTop(inputBeam, w0 = 6e-4, extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = F
     rSquare = (X**2 + Y**2)
     Intensity = np.ones([int(shape), int(shape)])
     Intensity[(np.sqrt(rSquare) > w0)] = 0
-    
+    Intensity /= np.sum(Intensity)
     if plot:
         plt.imshow(Intensity, extent = [extent[0], extent[1], extent[0], extent[1]], cmap = stanford_colormap)
         #plt.title("Normalized Circular Flat Top")
@@ -235,10 +236,193 @@ def Lenna(inputBeam, extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False, filepat
     return Lenna
 
 
-if __name__ == "__main__":
-    testArray = np.ones([2**11, 2**11])
-    extent = [-1.27e-2, 1.27e-2]
-    test = Lenna(testArray, extent = extent, plot = True)
+def Aligner(inputBeam, extent = [-1.27e-2, 1.27e-2], plot = False, fullw0 = 0.6e-3, spotw0 = 200e-6, spotsNum = 4):
+    
+    # --- Extracting Analytics --- 
+    from scipy.ndimage import rotate
+    shape = inputBeam.shape[0]
+    
+    # --- Building the circular array --- 
+    x_ = np.linspace(extent[0], extent[1], shape)
+    y_ = np.linspace(extent[0], extent[1], shape)
+    X, Y = np.meshgrid(x_, y_)
+    rSquare = (X**2 + Y**2)
+    
+    # --- Creating the array --- 
+    intensity = np.zeros([int(shape), int(shape)])
+    
+    # --- Building the central spot ---
+    intensity[(np.sqrt(rSquare) < spotw0)] = 1
+    
+    # --- Creating the array of circular spots around the central spot --- 
+    spotCenter = fullw0 - spotw0/2
+    spotCenter = np.ones([int(shape), int(shape)]) * spotCenter
+    rSquareSpot = (X**2 + (Y + spotCenter)**2)
+    intensity[(np.sqrt(rSquareSpot) < spotw0)] = 1
+    
+    for i in range(spotsNum-1):
+        angle = 360/spotsNum * (i +1)
+        intensity += rotate(intensity, angle, reshape = False, order = 1)
+        
+    intensity[(intensity > 0.1)] = 1
+    
+    
+    # --- Plotting if given ---
+    if plot:
+        plt.imshow(intensity, extent = [extent[0], extent[1], extent[0], extent[1]])
+        plt.title("Aligner")
+        plt.xlabel('distance (m)')
+        plt.ylabel('distance (m)')
+        plt.tight_layout()
+        plt.colorbar()
+        plt.show()
+    
+    
+    return intensity
+
+
+
+def Aligner2(inputBeam, extent = [-1.27e-2, 1.27e-2], plot = False, fullw0 = 0.6e-3, spotw0 = 300e-6, spotsNum = 7):
+    
+    # --- Extracting Analytics --- 
+    from scipy.ndimage import rotate
+    shape = inputBeam.shape[0]
+    
+    # --- Building the circular array --- 
+    x_ = np.linspace(extent[0], extent[1], shape)
+    y_ = np.linspace(extent[0], extent[1], shape)
+    X, Y = np.meshgrid(x_, y_)
+    rSquare = (X**2 + Y**2)
+    
+    # --- Creating the array --- 
+    intensity = np.zeros([int(shape), int(shape)])
+    
+    # --- Building the central spot ---
+    intensity[(np.sqrt(rSquare) < spotw0)] = 1
+    
+    # --- Creating the array of circular spots around the central spot --- 
+    spotCenter = fullw0 - spotw0/2
+    spotCenter = np.ones([int(shape), int(shape)]) * spotCenter
+    rSquareSpot = (X**2 + (Y + spotCenter)**2)
+    intensity[(np.sqrt(rSquareSpot) < spotw0)] = 1
+    
+    for i in range(spotsNum-1):
+        angle = 360/spotsNum * (i +1)
+        intensity += rotate(intensity, angle, reshape = False, order = 1)
+        
+
+    # --- Adding a Moon on the first angle --- 
+    angleMoon = 360/spotsNum * (1)
+
+    intensityMoon = np.zeros([int(shape), int(shape)])
+    rSquareMoon= (X**2 + (Y + spotCenter + 150e-6)**2)
+    intensityMoon[(np.sqrt(rSquareMoon) < spotw0)] = -10
+    intensity += rotate(intensityMoon, angleMoon, reshape = False, order = 1)
+    
+    
+    # --- Adding a Moon on the mid Angle
+    angleMoon2 = 360/spotsNum * (int(spotsNum/2))
+
+    intensityMoon2 = np.zeros([int(shape), int(shape)])
+    rSquareMoon2= (X**2 + (Y + spotCenter + 100e-6)**2)
+    intensityMoon2[(np.sqrt(rSquareMoon2) < spotw0)] = -10
+    intensity += rotate(intensityMoon2, angleMoon2, reshape = False, order = 1)
     
 
+        
+    intensity[(intensity > 0.1)] = 1
+    intensity[(intensity<0.5)] = 0
+    
+    # --- Plotting if given ---
+    if plot:
+        plt.imshow(intensity, extent = [extent[0], extent[1], extent[0], extent[1]])
+        plt.title("Aligner")
+        plt.xlabel('distance (m)')
+        plt.ylabel('distance (m)')
+        plt.tight_layout()
+        plt.colorbar()
+        plt.show()
+    
+    
+    return intensity
+
+
+
+def CathodeCleaner(inputBeam, extent = [-1.27e-2, 1.27e2]):
+    """
+    Creating a thin line to do cathode cleaning
+
+    Returns
+    -------
+    intensity : TYPE
+        DESCRIPTION.
+
+    """
+    shape = inputBeam.shape[0]
+    
+    # --- Building the circular array --- 
+    x_ = np.linspace(extent[0], extent[1], shape)
+    y_ = np.linspace(extent[0], extent[1], shape)
+    X, Y = np.meshgrid(x_, y_)
+    
+    intensity = np.zeros([int(shape), int(shape)])
+    
+    intensity[((X<extent[1]/10) & (X>0) & (np.abs(Y) < extent[1]/250))] = 1
+    
+    return intensity
+
+
+def LaserHeater(inputBeam, targetRadius = (1.2/2)*1e-3, n = 1, trunc = 50,
+                extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = True):
+    
+    regularGaussian = superTruncGaussian(inputBeam, targetRadius = (1.2/2)*1e-3, n = 1, trunc = 50,
+                           extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False)
+    mask = (regularGaussian > np.max(regularGaussian) * 0.01)
+    intensity =  mask * np.max(regularGaussian)- regularGaussian
+    
+    
+    return intensity
+
+def LaserHeater2(inputBeam, targetRadius = (1.2/2)*1e-3,
+                extent = [-1.27 * 1e-2, 1.27 * 1e-2]):
+    shape = inputBeam.shape[0]
+    x_ = np.linspace(extent[0], extent[1], shape)
+    y_ = np.linspace(extent[0], extent[1], shape)
+    X, Y = np.meshgrid(x_, y_)
+    rSquare = (X**2 + Y**2)
+    
+    intensity = np.sqrt(rSquare)
+    mask = (np.sqrt(rSquare) > targetRadius)
+    intensity[mask] = 0
+    intensity /= np.sum(intensity)
+    
+    
+    
+    return intensity
+
+if __name__ == "__main__":
+    testArray = np.ones([2**11+1, 2**11+1])
+    extent = [-1.27e-2, 1.27e-2]
+    #test = Lenna(testArray, extent = extent, plot = True)
+    '''test = superTruncGaussian(testArray, w0 = 4.673685e-3, n = 1, trunc = 50, 
+                           extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False) #10.20116e-4'''
+    test = Aligner2(testArray, spotsNum = 7, fullw0= (5.5/2)*1e-3)
+    
+    test = LaserHeater(testArray, targetRadius = (1.2/2)*1e-3, n = 1, trunc = 50,
+                           extent = [-1.27 * 1e-2, 1.27 * 1e-2], plot = False)
+    
+    test = flatTop(testArray, w0 = 11.1/2*1e-3, extent = extent)
+    
+    test = LaserHeater2(testArray, targetRadius = (1.2/2)*1e-3,
+                           extent = [-1.27 * 1e-2, 1.27 * 1e-2])
+    
+    #test = CathodeCleaner(testArray, extent = extent)
+    maxROI = 100
+    center = int(testArray.shape[0]/2)
+    imROI = test[int(center-maxROI): int(center+maxROI), int(center-maxROI):int(center+maxROI)]
+    plt.imshow(imROI, cmap = 'inferno')
+    plt.colorbar()
+    plt.show()
+    plt.plot(imROI[int(imROI.shape[0]/2),:])
+    
 
