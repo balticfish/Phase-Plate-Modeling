@@ -384,3 +384,58 @@ def Gaussian(sizeFactor = 11, wavelength = 253e-9, w0 = 4e-3,
     
     return field
 
+def Lens(inputBeam, f, wavelength = 253e-9, w0 = 4e-3, nLens = 1.5058500198911624,
+         nProp = 1.00030067, extent = [-1.27 * 1e-2, 1.27 * 1e-2]):
+    """
+    Applying a lens transformation to an incoming Complex Beam
+
+    Parameters
+    ----------
+    inputBeam : np.array
+        The complex beam to apply the transfer function to
+    f : float
+        The focal length of the lens to use (assumed symmetrical in x and y)
+    wavelength : float, optional
+        Single wavelength of the beam. The default is 253 nm
+    w0 : float, optional
+        The waist of the curve using 1/e of the amplitude. The default is 4 mm
+    extent : array, optional
+        Extent of the array to build. The default is set in the globals.
+    plot : Bool, optional
+        Boolean to choose if plots should be made. The default is False.
+        
+    References
+    ----------
+    I) 'Soft x-ray self-seeding simulation methods and their application for 
+        the Linac Coherent Light Source', S. Serkez et al.
+
+    Returns
+    -------
+    outputBeam : np.array
+        Outgoing Complex Beam after Lens  transformation
+
+    """
+    
+    # --- Extracting Parameters --- 
+    k0 = 2 * pi / (wavelength) # How do I adapt the wavelength for inside the lens ? 
+    
+    # --- Adapting the focal length to the propagation medium ---
+    if nLens != None:
+        f = f * (1-nLens)/(nProp - nLens)
+        #k0 *= nLens#nLens
+    
+    inputShape = inputBeam.shape
+    
+    # --- Building the transfer function ---
+    x_, y_ = np.linspace(extent[0], extent[1], inputShape[0]), np.linspace(extent[0], extent[1], inputShape[1])
+    X, Y = np.meshgrid(x_, y_)
+    rSquare = (X**2 + Y**2)
+    
+    
+    #Built using reference I's radius of curvature implementation
+    lensShift = np.exp(-1j * k0 * rSquare/(2 * f))
+    
+    # --- Applying the transfer function in real space ---
+    outputBeam = inputBeam * lensShift
+    
+    return outputBeam
