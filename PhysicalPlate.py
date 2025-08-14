@@ -207,8 +207,12 @@ def maskToDepths(phase, wavelength = 253e-9, materialIndex = 1.5058500198911624,
     truePlate = np.array(phase)
     print(np.unique(truePlate))
     # --- Removing the unnecessary step -pi and setting to pi ---
-    truePlate[(truePlate == -pi)] = truePlate[(truePlate == -pi)] + 2*pi
-    truePlate[(truePlate < 0)] = truePlate[(truePlate < 0)] + 2*pi
+    if np.array((truePlate == -pi)).sum() != 0:
+        truePlate[(truePlate == -pi)] = truePlate[(truePlate == -pi)] + 2*pi
+    else:
+        print('The -pi phase was already removed')
+    if np.array((truePlate < 0)).sum() != 0:
+        truePlate[(truePlate < 0)] = truePlate[(truePlate < 0)] + 2*pi
     # --- Normalizing and setting to the depths instead of phase shift ---
     #truePlate += pi * np.ones(truePlate.shape)
 
@@ -222,12 +226,13 @@ def maskToDepths(phase, wavelength = 253e-9, materialIndex = 1.5058500198911624,
     #np.savetxt(save, truePlate, delimiter=",", fmt="%.16f")
     #plt.imsave(save, truePlate, cmap="gray", format="png")
     plt.imshow(truePlate, cmap = 'gray')
-    
+    plt.show()
+                     
     return truePlate
-
+    
 
 if __name__ == "__main__": 
-    
+    import RefractionIndex
     #--- Initial Test to see how the boxing works --- 
     
     # Extracting the classic Lenna Target for the test
@@ -238,7 +243,7 @@ if __name__ == "__main__":
 
     # --- Applying Boxing ---
     result = Box(testImage, 16)
-    
+   
     # --- Plotting Outputs ---
     fig, axs = plt.subplots(1, 2, figsize=(12, 10))
     
@@ -255,13 +260,20 @@ if __name__ == "__main__":
     fig.colorbar(resultPlot, ax = axs[1], orientation = 'horizontal')
 
 
-    # --- Testing the Density Functions that generate a phase plate with given depths ---
-    savePhase = "Phase.h5"
+    # --- Testing the Density Function --- 
+    savePhase = 'Phase.h5'
     with h5py.File(savePhase, 'r') as file:
         hologram = file['Phase'][:]
     print('original phase steps', np.unique(hologram))
-
-    densePhase, depthStep = Density(hologram, levels = 8)
+    #Testing on small array
+    '''randomTest = np.random.rand(20,20) - 0.5
+    randomTest *= 2*np.pi
+    hologram = randomTest'''
+    wavelength = 253e-9
+    nLens = RefractionIndex.FusedSilica(wavelength)    #1.5058500198911624 # None
+    nProp = RefractionIndex.Air(wavelength)  
+    densePhase, depthStep = Density(hologram, levels = 8, wavelength=wavelength,
+                                    n_air = nProp, materialIndex=nLens)
     #densePhase, depthStep = Density2Level(hologram, 0, levels = 3)
     print('Difference in glass thickness for each phase step', depthStep, '\n\n')
 
@@ -276,8 +288,9 @@ if __name__ == "__main__":
     
     
     # --- Making a manufacturable plate with true depth levels ---
-    
-    truePlate = maskToDepths(hologram, save = '')
+    filepath = "Phase.png"
+    truePlate = maskToDepths(hologram, save = filepath, wavelength=253e-9,
+                             n_air = 1.0002950541290963, materialIndex=1.5014613746747054)
     
     figT, axsT = plt.subplots(1, 2, figsize=(12, 8))
     # Plotting initial Phase
@@ -299,44 +312,17 @@ if __name__ == "__main__":
     axsT[1].set_xlabel('x [mm]', fontsize = 14)
     figT.colorbar(resultPlotT, ax = axsT[1], orientation = 'horizontal')
     figT.tight_layout()
+    
+    plt.show()
+    boxed = Box(np.random.random(testArray.shape), 32)
+    plt.imshow(boxed)
+    plt.colorbar()
+    plt.title('Boxing')
+    plt.show()
 
     
+
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        
+    
+    
