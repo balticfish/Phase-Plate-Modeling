@@ -410,32 +410,39 @@ if __name__ == "__main__":
     saveData = 'SimulatedData.h5'
 
     
-    # ––– Creating a Phase Plate and Propagating through it –––
+    ###########################################################
+    # --- Creating a Phase Plate and Propagating through it --- 
+    ###########################################################
     
-    # ––– Creating an initial beam to propagate –––
-    inputBeam = Gaussian(sizeFactor = 11, plot = True, w0 = w0, extent = extent)
+    # ––– Creating a Pure Gaussian Beam to Propagate ––––––––––––––––––––––––––
+    inputBeam = Gaussian(sizeFactor = sizeFactor,
+                         plot = True, w0 = w0, extent = extent)
     inputBeam = MaskOptics(inputBeam, extent[1], extent = extent) #Cutting the input beam at 1 inch aperture
     
-    # ––– Initializing a target –––
-    target = superTruncGaussian(inputBeam, targetRadius = targetRadius, trunc = trunc, extent = extent)
-
-    # ––– Building a phase plate to achieve the given target –––
+    # ––– Initializing a target –––––––––––––––––––––––––––––––––––––––––––––––
+    target = superTruncGaussian(inputBeam, targetRadius = targetRadius,
+                                trunc = trunc, extent = extent)
+    
+    
+    # ––– Building a phase plate to achieve the given target ––––––––––––––––––
     print("\n Starting IFTA ...\n")
-    plate = phasePlate(inputBeam, plot = True, nProp = nProp, nLens = nLens, hologram = [iterations, target],
-                       save = savePhase, f = f, z0 = z1, randomSeed = randomSeed, steps = steps, extent = extent,
-                       size = 0)# hologram = [iterations, target] | savePhase 
+    plate = phasePlate(inputBeam, plot = True, nProp = nProp, nLens = nLens, hologram = NanoX,
+                       save = '', f = f, z0 = z1, randomSeed = randomSeed, steps = steps, extent = extent,
+                       size = 0)# [iterations, target] / savePhase
+    
+    np.unique(plate)
 
-    # ––– Applying the diffraction between the phase mask and the lens –––
+    
+    # --- Applying the diffraction between the phase mask and the lens ---
     midLens = Propagate(plate, z1, padding = 0, n = nLens, save = '')
     
     # --- Applying a lens transformation to the beam ---
     lens = Lens(midLens, f, nLens = nLens, nProp = nProp, extent = extent)
     
-    # ––– Propagating the beam to the fourier plane –––
-    prop = Propagate(lens, f, padding = 0, n = nProp, save = saveData, extent = extent)
-
-    # ––– Plotting the beam after propagation ––– 
+    prop = Propagate(lens, f, padding = 0, n = nProp, save = saveData, extent = extent) #saveData
+    
     plotBeam(prop, extent = extent, truncRadius = targetRadius, fitCut = True, title = 'Beam Profile at Cathode', maxROI = 60)
-
-    # ––– Determine the Characteristic Speckle –––
+    
+    
+    AutoCorr(prop, extent = extent, truncRadius = targetRadius, title = "Characteristic Speckle", clip = 0.5)
     
