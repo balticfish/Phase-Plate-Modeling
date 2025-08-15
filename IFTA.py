@@ -154,6 +154,16 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
             )
     else:
         outputFP = None
+
+    # ––– Determine the bandpass filter mask for the padded beam –––
+    # To remove high freq noise due to the FFT
+    kx_ = 2*pi*fftfreq(propagatorForward.shape[0], d = (2**(1+padding)) * extent[1]/inputAmplitude.shape[0]) 
+    ky_ = 2*pi*fftfreq(propagatorForward.shape[1], d = (2**(1+padding)) * extent[1]/inputAmplitude.shape[1])
+    #kx_ = fftshift(kx_)
+    #ky_ = fftshift(ky_)
+    kx, ky = np.meshgrid(kx_, ky_)
+    Ks  = np.sqrt(kx**2 + ky**2)
+    bandpass = (Ks>k_max)
     
     for i in tqdm(range(iteration), desc = 'Iterations of IFTA'):
         
@@ -166,6 +176,7 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
             paddedField = fastOn(field, size)
             kPadded = fftshift(fft2(paddedField, workers = ncpu))
             kPadded *= propagatorForward0
+            kPadded[bandpass] = 0+1j*0
             outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
             field = fastOff(outputPadded, size)
         
@@ -177,6 +188,7 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         paddedField = fastOn(field, size)
         kPadded = fftshift(fft2(paddedField, workers = ncpu))
         kPadded *= propagatorForward
+        kPadded[bandpass] = 0+1j*0
         outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
         field = fastOff(outputPadded, size)
         
@@ -199,6 +211,7 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
         paddedField = fastOn(field, size)
         kPadded = fftshift(fft2(paddedField, workers = ncpu))
         kPadded *= propagatorBackward
+        kPadded[bandpass] = 0+1j*0
         outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
         field = fastOff(outputPadded, size)
         # Undoing the lens transformation
@@ -209,6 +222,7 @@ def IFTA(inputField, iteration = 30, f = 1.2, z = 1.2, target = None,
             paddedField = fastOn(field, size)
             kPadded = fftshift(fft2(paddedField, workers = ncpu))
             kPadded *= propagatorBackward0
+            kPadded[bandpass] = 0+1j*0
             outputPadded = ifft2(ifftshift(kPadded), workers = ncpu)
             field = fastOff(outputPadded, size)
         
